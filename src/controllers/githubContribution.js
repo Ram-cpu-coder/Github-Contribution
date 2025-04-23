@@ -1,10 +1,9 @@
 import axios from "axios";
-import Contribution from "../schema/githubSchema.js";
 import { fetchAndStoreGitHubData } from "../services/githubServices.js";
 
 const username = process.env.GITHUB_USERNAME;
 const token = process.env.GITHUB_TOKEN;
-
+// checking the limit of the api call
 async function checkRateLimit(token) {
     try {
         const rateLimitResponse = await axios.get("https://api.github.com/rate_limit", {
@@ -18,7 +17,7 @@ async function checkRateLimit(token) {
     }
 }
 
-
+// fetching the contributions or say commits 100 in each page
 async function fetchCommits(repoName, username, token) {
     const commitsUrl = `https://api.github.com/repos/${username}/${repoName}/commits`;
     let page = 1;
@@ -62,11 +61,13 @@ export async function collectGitHubData(username, token) {
     }
 
     try {
+        // getting detail of every repo detail 
         const reposResponse = await axios.get(`https://api.github.com/users/${username}/repos?per_page=100`, {
             headers: { Authorization: `token ${token}` }
         });
 
         for (const repo of reposResponse.data) {
+            // finding the number of commit on the every date of the given parameters
             const repoContributionData = await fetchCommits(repo.name, username, token);
             for (const date in repoContributionData) {
                 if (!contributionData[date]) {
@@ -83,6 +84,7 @@ export async function collectGitHubData(username, token) {
         throw new Error('Error collecting GitHub data');
     }
 }
+
 export async function fetchAndStoreAllContributions(req, res) {
     try {
         await fetchAndStoreGitHubData();

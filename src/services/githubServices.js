@@ -16,10 +16,10 @@ export async function fetchAndStoreGitHubData() {
         count
     }));
 
-    await Promise.all(entries.map(entry =>
+    await Promise.all(entries.map(item =>
         Contribution.updateOne(
-            { username, date: entry.date },
-            { $set: { count: entry.count } },
+            { username, date: item.date },
+            { $set: { count: item.count } },
             { upsert: true }
         )
     ));
