@@ -1,9 +1,7 @@
 import axios from "axios";
 import { fetchAndStoreGitHubData } from "../services/githubServices.js";
 
-const username = process.env.GITHUB_USERNAME;
-const token = process.env.GITHUB_TOKEN;
-// checking the limit of the api call
+// Check if rate limit is exceeded
 async function checkRateLimit(token) {
     try {
         const rateLimitResponse = await axios.get("https://api.github.com/rate_limit", {
@@ -17,12 +15,13 @@ async function checkRateLimit(token) {
     }
 }
 
-// fetching the contributions or say commits 100 in each page
+// Fetch commits from a repository
 async function fetchCommits(repoName, username, token) {
     const commitsUrl = `https://api.github.com/repos/${username}/${repoName}/commits`;
     let page = 1;
     let hasMoreCommits = true;
     const contributionData = {};
+    let earliestDate = null;
 
     while (hasMoreCommits) {
         try {
@@ -40,6 +39,11 @@ async function fetchCommits(repoName, username, token) {
                     contributionData[date] = 0;
                 }
                 contributionData[date]++;
+
+                // Update earliest date
+                if (!earliestDate || new Date(date) < new Date(earliestDate)) {
+                    earliestDate = date;
+                }
             });
 
             page++;
@@ -48,11 +52,14 @@ async function fetchCommits(repoName, username, token) {
             hasMoreCommits = false;
         }
     }
-    return contributionData;
+
+    return { contributionData, earliestDate };
 }
 
+// Collect GitHub data for the user
 export async function collectGitHubData(username, token) {
     const contributionData = {};
+    let earliestCommitDate = null;
 
     // Check if we have rate limit remaining before fetching data
     const remainingRequests = await checkRateLimit(token);
@@ -61,20 +68,36 @@ export async function collectGitHubData(username, token) {
     }
 
     try {
-        // getting detail of every repo detail 
         const reposResponse = await axios.get(`https://api.github.com/users/${username}/repos?per_page=100`, {
             headers: { Authorization: `token ${token}` }
         });
 
         for (const repo of reposResponse.data) {
-            // finding the number of commit on the every date of the given parameters
-            const repoContributionData = await fetchCommits(repo.name, username, token);
+            const { contributionData: repoContributionData, earliestDate } = await fetchCommits(repo.name, username, token);
+
+            // Update the earliest commit date
+            if (earliestCommitDate === null || (earliestDate && new Date(earliestDate) < new Date(earliestCommitDate))) {
+                earliestCommitDate = earliestDate;
+            }
+
+            // Merge commit data from the repository
             for (const date in repoContributionData) {
                 if (!contributionData[date]) {
                     contributionData[date] = 0;
                 }
                 contributionData[date] += repoContributionData[date];
             }
+        }
+
+        // Ensure every date between the earliest commit and today is included
+        const today = new Date();
+        let currentDate = new Date(earliestCommitDate);
+        while (currentDate <= today) {
+            const dateString = currentDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+            if (!contributionData[dateString]) {
+                contributionData[dateString] = 0;
+            }
+            currentDate.setDate(currentDate.getDate() + 1); // Move to the next day
         }
 
         return contributionData;
@@ -85,6 +108,7 @@ export async function collectGitHubData(username, token) {
     }
 }
 
+// Endpoint to fetch and store all contributions
 export async function fetchAndStoreAllContributions(req, res) {
     try {
         await fetchAndStoreGitHubData();
